@@ -826,7 +826,7 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
 
         private static final long serialVersionUID = 6404226426336033100L;
 
-        final T value;
+        T value;
 
         Node(T value) {
             this.value = value;
@@ -837,13 +837,18 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
 
         private static final long serialVersionUID = 6404226426336033100L;
 
-        final T value;
-        final long time;
+        T value;
+        long time;
 
-        TimedNode(T value, long time) {
+        TimedNode() {
+            //no op
+        }
+
+        void setValueAndTime(T value, long time){
             this.value = value;
             this.time = time;
         }
+
     }
 
     static final class SizeBoundReplayBuffer<@NonNull T>
@@ -876,11 +881,12 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
 
         @Override
         public void next(T value) {
-            Node<T> n = new Node<>(value);
+            Node<T> n = new Node<>(null);
             Node<T> t = tail;
 
             tail = n;
             size++;
+            t.value = value;
             t.set(n); // releases both the tail and size
 
             trim();
@@ -889,23 +895,17 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
         @Override
         public void error(Throwable ex) {
             error = ex;
-            trimHead();
             done = true;
         }
 
         @Override
         public void complete() {
-            trimHead();
             done = true;
         }
 
         @Override
         public void trimHead() {
-            if (head.value != null) {
-                Node<T> n = new Node<>(null);
-                n.lazySet(head.get());
-                head = n;
-            }
+            //no op
         }
 
         @Override
@@ -921,11 +921,13 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
         @Override
         public T getValue() {
             Node<T> h = head;
+            Node<T> node = h;
             for (;;) {
                 Node<T> n = h.get();
                 if (n == null) {
-                    return h.value;
+                    return node.value;
                 }
+                node = h;
                 h = n;
             }
         }
@@ -949,8 +951,8 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
             }
 
             for (int j = 0; j < s; j++) {
-                h = h.get();
                 array[j] = h.value;
+                h = h.get();
             }
 
             if (array.length > s) {
@@ -1006,7 +1008,7 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
                         break;
                     }
 
-                    a.onNext(next.value);
+                    a.onNext(index.value);
                     e++;
                     index = next;
                 }
@@ -1080,7 +1082,7 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
             this.maxAge = maxAge;
             this.unit = unit;
             this.scheduler = scheduler;
-            TimedNode<T> h = new TimedNode<>(null, 0L);
+            TimedNode<T> h = new TimedNode<>();
             this.tail = h;
             this.head = h;
         }
@@ -1095,6 +1097,10 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
 
             TimedNode<T> h = head;
 
+            if (h.time > limit) {
+                return;
+            }
+
             for (;;) {
                 if (size <= 1) {
                     head = h;
@@ -1102,7 +1108,7 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
                 }
                 TimedNode<T> next = h.get();
 
-                if (next.time > limit) {
+                if (h.time > limit) {
                     head = h;
                     break;
                 }
@@ -1113,53 +1119,19 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
 
         }
 
-        void trimFinal() {
-            long limit = scheduler.now(unit) - maxAge;
-
-            TimedNode<T> h = head;
-
-            for (;;) {
-                TimedNode<T> next = h.get();
-                if (next == null) {
-                    if (h.value != null) {
-                        head = new TimedNode<>(null, 0L);
-                    } else {
-                        head = h;
-                    }
-                    break;
-                }
-
-                if (next.time > limit) {
-                    if (h.value != null) {
-                        TimedNode<T> n = new TimedNode<>(null, 0L);
-                        n.lazySet(h.get());
-                        head = n;
-                    } else {
-                        head = h;
-                    }
-                    break;
-                }
-
-                h = next;
-            }
-        }
-
         @Override
         public void trimHead() {
-            if (head.value != null) {
-                TimedNode<T> n = new TimedNode<>(null, 0L);
-                n.lazySet(head.get());
-                head = n;
-            }
+            //no op
         }
 
         @Override
         public void next(T value) {
-            TimedNode<T> n = new TimedNode<>(value, scheduler.now(unit));
+            TimedNode<T> n = new TimedNode<>();
             TimedNode<T> t = tail;
 
             tail = n;
             size++;
+            t.setValueAndTime(value, scheduler.now(unit));
             t.set(n); // releases both the tail and size
 
             trim();
@@ -1167,14 +1139,14 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
 
         @Override
         public void error(Throwable ex) {
-            trimFinal();
+            trim();
             error = ex;
             done = true;
         }
 
         @Override
         public void complete() {
-            trimFinal();
+            trim();
             done = true;
         }
 
@@ -1182,21 +1154,23 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
         @Nullable
         public T getValue() {
             TimedNode<T> h = head;
+            TimedNode<T> node = h;
 
             for (;;) {
                 TimedNode<T> next = h.get();
                 if (next == null) {
                     break;
                 }
+                node = h;
                 h = next;
             }
 
             long limit = scheduler.now(unit) - maxAge;
-            if (h.time < limit) {
+            if (node.time < limit) {
                 return null;
             }
 
-            return h.value;
+            return node.value;
         }
 
         @Override
@@ -1217,7 +1191,7 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
                 int i = 0;
                 while (i != s) {
                     TimedNode<T> next = h.get();
-                    array[i] = next.value;
+                    array[i] = h.value;
                     i++;
                     h = next;
                 }
@@ -1235,7 +1209,7 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
             long limit = scheduler.now(unit) - maxAge;
             TimedNode<T> next = index.get();
             while (next != null) {
-                long ts = next.time;
+                long ts = index.time;
                 if (ts > limit) {
                     break;
                 }
@@ -1292,7 +1266,7 @@ public final class ReplayProcessor<@NonNull T> extends FlowableProcessor<T> {
                         break;
                     }
 
-                    a.onNext(next.value);
+                    a.onNext(index.value);
                     e++;
                     index = next;
                 }

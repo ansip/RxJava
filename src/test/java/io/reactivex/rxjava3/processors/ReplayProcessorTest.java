@@ -1559,7 +1559,7 @@ public class ReplayProcessorTest extends FlowableProcessorTest<Object> {
     }
 
     @Test
-    public void noHeadRetentionCompleteSize() {
+    public void noTailRetentionCompleteSize() {
         ReplayProcessor<Integer> source = ReplayProcessor.createWithSize(1);
 
         source.onNext(1);
@@ -1568,17 +1568,12 @@ public class ReplayProcessorTest extends FlowableProcessorTest<Object> {
 
         SizeBoundReplayBuffer<Integer> buf = (SizeBoundReplayBuffer<Integer>)source.buffer;
 
-        assertNull(buf.head.value);
-
-        Object o = buf.head;
-
-        source.cleanupBuffer();
-
-        assertSame(o, buf.head);
+        assertSame(buf.head.get(), buf.tail);
+        assertNull(buf.tail.value);
     }
 
     @Test
-    public void noHeadRetentionErrorSize() {
+    public void noTailRetentionErrorSize() {
         ReplayProcessor<Integer> source = ReplayProcessor.createWithSize(1);
 
         source.onNext(1);
@@ -1587,13 +1582,8 @@ public class ReplayProcessorTest extends FlowableProcessorTest<Object> {
 
         SizeBoundReplayBuffer<Integer> buf = (SizeBoundReplayBuffer<Integer>)source.buffer;
 
-        assertNull(buf.head.value);
-
-        Object o = buf.head;
-
-        source.cleanupBuffer();
-
-        assertSame(o, buf.head);
+        assertSame(buf.head.get(), buf.tail);
+        assertNull(buf.tail.value);
     }
 
     @Test
@@ -1609,7 +1599,7 @@ public class ReplayProcessorTest extends FlowableProcessorTest<Object> {
     }
 
     @Test
-    public void noHeadRetentionSize() {
+    public void noTailRetentionSize() {
         ReplayProcessor<Integer> source = ReplayProcessor.createWithSize(1);
 
         source.onNext(1);
@@ -1617,21 +1607,13 @@ public class ReplayProcessorTest extends FlowableProcessorTest<Object> {
 
         SizeBoundReplayBuffer<Integer> buf = (SizeBoundReplayBuffer<Integer>)source.buffer;
 
-        assertNotNull(buf.head.value);
-
-        source.cleanupBuffer();
-
-        assertNull(buf.head.value);
-
-        Object o = buf.head;
-
-        source.cleanupBuffer();
-
-        assertSame(o, buf.head);
+        assertEquals(Integer.valueOf(2),  buf.head.value);
+        assertSame(buf.tail, buf.head.get());
+        assertNull(buf.tail.value);
     }
 
     @Test
-    public void noHeadRetentionCompleteTime() {
+    public void noTailRetentionCompleteTime() {
         ReplayProcessor<Integer> source = ReplayProcessor.createWithTime(1, TimeUnit.MINUTES, Schedulers.computation());
 
         source.onNext(1);
@@ -1640,17 +1622,14 @@ public class ReplayProcessorTest extends FlowableProcessorTest<Object> {
 
         SizeAndTimeBoundReplayBuffer<Integer> buf = (SizeAndTimeBoundReplayBuffer<Integer>)source.buffer;
 
-        assertNull(buf.head.value);
-
-        Object o = buf.head;
-
-        source.cleanupBuffer();
-
-        assertSame(o, buf.head);
+        assertEquals(Integer.valueOf(1),  buf.head.value);
+        assertEquals(Integer.valueOf(2),  buf.head.get().value);
+        assertSame(buf.tail, buf.head.get().get());
+        assertNull(buf.tail.value);
     }
 
     @Test
-    public void noHeadRetentionErrorTime() {
+    public void noTailRetentionErrorTime() {
         ReplayProcessor<Integer> source = ReplayProcessor.createWithTime(1, TimeUnit.MINUTES, Schedulers.computation());
 
         source.onNext(1);
@@ -1659,17 +1638,14 @@ public class ReplayProcessorTest extends FlowableProcessorTest<Object> {
 
         SizeAndTimeBoundReplayBuffer<Integer> buf = (SizeAndTimeBoundReplayBuffer<Integer>)source.buffer;
 
-        assertNull(buf.head.value);
-
-        Object o = buf.head;
-
-        source.cleanupBuffer();
-
-        assertSame(o, buf.head);
+        assertEquals(Integer.valueOf(1),  buf.head.value);
+        assertEquals(Integer.valueOf(2),  buf.head.get().value);
+        assertSame(buf.tail, buf.head.get().get());
+        assertNull(buf.tail.value);
     }
 
     @Test
-    public void noHeadRetentionTime() {
+    public void noTailRetentionTime() {
         TestScheduler sch = new TestScheduler();
 
         ReplayProcessor<Integer> source = ReplayProcessor.createWithTime(1, TimeUnit.MILLISECONDS, sch);
@@ -1682,17 +1658,9 @@ public class ReplayProcessorTest extends FlowableProcessorTest<Object> {
 
         SizeAndTimeBoundReplayBuffer<Integer> buf = (SizeAndTimeBoundReplayBuffer<Integer>)source.buffer;
 
-        assertNotNull(buf.head.value);
-
-        source.cleanupBuffer();
-
-        assertNull(buf.head.value);
-
-        Object o = buf.head;
-
-        source.cleanupBuffer();
-
-        assertSame(o, buf.head);
+        assertEquals(Integer.valueOf(2),  buf.head.value);
+        assertSame(buf.tail, buf.head.get());
+        assertNull(buf.tail.value);
     }
 
     @Test
